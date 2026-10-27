@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dartssh2/dartssh2.dart';
@@ -8,8 +9,20 @@ import '../../core/claude/claude_command.dart';
 import '../../core/notifications/agent_notifier.dart';
 import '../../core/ssh/ssh_gateway.dart';
 import '../servers/server_profile.dart';
+import 'permission_prompt.dart';
 
 enum SessionStatus { connecting, running, exited, failed }
+
+/// Maximum number of unattended reconnect attempts after a dropped
+/// connection, before giving up and leaving the "Resume" button for the user.
+const maxAutoReconnectAttempts = 3;
+
+/// Delay before each automatic reconnect attempt, longest last.
+const autoReconnectDelays = [
+  Duration(seconds: 2),
+  Duration(seconds: 5),
+  Duration(seconds: 10),
+];
 
 /// One tab: a live `claude` process on the VPS, attached to a terminal view.
 class TerminalSession extends ChangeNotifier {
@@ -45,6 +58,18 @@ class TerminalSession extends ChangeNotifier {
   String? errorMessage;
   int? exitCode;
 
+  /// Option numbers of a numbered Claude prompt detected near the end of the
+  /// terminal (for example `[1, 2, 3]`), or empty when none is showing.
+  List<int> promptOptions = const [];
+  Timer? _promptDebounce;
+
+  /// True while [start] is retrying after a dropped connection, without the
+  /// user having to tap "Resume" themselves.
+  bool autoReconnecting = false;
+  int reconnectAttempt = 0;
+  Timer? _reconnectTimer;
+  bool _stoppedByUser = false;
+
   SSHClient? _client;
   SSHSession? _session;
 
@@ -60,10 +85,13 @@ class TerminalSession extends ChangeNotifier {
   /// Starts (or restarts) Claude. With [continueConversation] it resumes the
   /// most recent conversation in [directory].
   Future<void> start({bool continueConversation = false}) async {
+    _reconnectTimer?.cancel();
+    _stoppedByUser = false;
     await _close();
     status = SessionStatus.connecting;
     errorMessage = null;
     exitCode = null;
+    promptOptions = const [];
     notifyListeners();
 
     try {
@@ -82,9 +110,11 @@ class TerminalSession extends ChangeNotifier {
         ),
       );
       _session = session;
-      utf8.decoder.bind(session.stdout).listen(terminal.write);
-      utf8.decoder.bind(session.stderr).listen(terminal.write);
+      utf8.decoder.bind(session.stdout).listen(_onReceive);
+      utf8.decoder.bind(session.stderr).listen(_onReceive);
       status = SessionStatus.running;
+      reconnectAttempt = 0;
+      autoReconnecting = false;
       notifyListeners();
 
       session.done.then((_) {
@@ -93,12 +123,43 @@ class TerminalSession extends ChangeNotifier {
         status = SessionStatus.exited;
         notifyListeners();
         onEvent?.call(exitCode == 0 ? AgentEvent.finished : AgentEvent.failed);
+        // exitCode 0 means the user (or Claude) ended the process on
+        // purpose, e.g. `/exit`; anything else looks like a dropped
+        // connection, worth retrying on its own.
+        if (exitCode != 0) _scheduleReconnect();
       });
     } catch (error) {
       status = SessionStatus.failed;
       errorMessage = error.toString();
       notifyListeners();
+      _scheduleReconnect();
     }
+  }
+
+  void _scheduleReconnect() {
+    if (_stoppedByUser) return;
+    if (reconnectAttempt >= maxAutoReconnectAttempts) {
+      autoReconnecting = false;
+      notifyListeners();
+      return;
+    }
+    final delay = autoReconnectDelays[reconnectAttempt];
+    reconnectAttempt++;
+    autoReconnecting = true;
+    notifyListeners();
+    _reconnectTimer = Timer(delay, () {
+      if (_stoppedByUser) return;
+      start(continueConversation: true);
+    });
+  }
+
+  /// Cancels a pending or in-progress automatic reconnect, for example
+  /// because the user tapped "Resume" themselves or is closing the tab.
+  void cancelAutoReconnect() {
+    _stoppedByUser = true;
+    _reconnectTimer?.cancel();
+    autoReconnecting = false;
+    reconnectAttempt = 0;
   }
 
   /// Switches permission mode. Claude restarts and resumes the conversation.
@@ -110,13 +171,49 @@ class TerminalSession extends ChangeNotifier {
   }
 
   /// Sends raw key input, for example an escape sequence from the toolbar.
-  void sendKey(String sequence) => _sendBytes(sequence);
+  void sendKey(String sequence) {
+    _clearPrompt();
+    _sendBytes(sequence);
+  }
 
   /// Pastes [text] as a single block and submits it, so newlines inside the
   /// message do not send early.
   void sendMessage(String text) {
+    _clearPrompt();
     _sendBytes('\x1b[200~$text\x1b[201~');
     _sendBytes('\r');
+  }
+
+  /// Answers a detected numbered prompt with option [n].
+  void answerPrompt(int n) => sendMessage('$n');
+
+  void _clearPrompt() {
+    if (promptOptions.isEmpty) return;
+    promptOptions = const [];
+    notifyListeners();
+  }
+
+  void _onReceive(String chunk) {
+    terminal.write(chunk);
+    // Debounced: Claude's menu usually arrives over several chunks, so wait
+    // for output to settle before reading the buffer back.
+    _promptDebounce?.cancel();
+    _promptDebounce = Timer(const Duration(milliseconds: 150), () {
+      final tailStart = (terminal.buffer.height - 20).clamp(
+        0,
+        terminal.buffer.height,
+      );
+      final text = terminal.buffer.getText(
+        BufferRangeLine(
+          CellOffset(0, tailStart),
+          CellOffset(terminal.viewWidth, terminal.buffer.height - 1),
+        ),
+      );
+      final detected = detectPermissionOptions(text);
+      if (listEquals(detected, promptOptions)) return;
+      promptOptions = detected;
+      notifyListeners();
+    });
   }
 
   /// Claude rings the terminal bell when it needs input. Ignore repeats, so
@@ -145,6 +242,8 @@ class TerminalSession extends ChangeNotifier {
 
   @override
   void dispose() {
+    cancelAutoReconnect();
+    _promptDebounce?.cancel();
     _close();
     super.dispose();
   }

@@ -8,13 +8,17 @@ environment:
 
 dependencies:
   dartssh2: ^4.1.0
+  file_picker: ^13.3.0
   flutter:
     sdk: flutter
   flutter_local_notifications: ^22.3.3
   flutter_secure_storage: ^11.2.0
+  local_auth: ^3.0.2
   path_provider: ^2.1.6
+  quick_actions: ^1.1.1
   share_plus: ^13.3.1
   shared_preferences: ^2.5.6
+  wakelock_plus: ^1.8.2
   xterm: ^4.0.0
 
 dev_dependencies:
