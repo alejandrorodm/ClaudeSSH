@@ -3,6 +3,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'core/background/foreground_service.dart';
 import 'core/notifications/agent_notifier.dart';
 import 'core/ssh/ssh_gateway.dart';
 import 'core/storage/known_hosts_preferences.dart';
@@ -21,6 +22,7 @@ Future<void> main() async {
       repository: ServerRepository(preferences, secureStorage),
       gateway: SshGateway(knownHosts),
       notifier: notifier,
+      foregroundService: ForegroundServiceController(),
       child: const PhoneSshApp(),
     ),
   );
@@ -37,12 +39,14 @@ class AppServices extends InheritedWidget {
     required this.repository,
     required this.gateway,
     required this.notifier,
+    required this.foregroundService,
     required super.child,
   });
 
   final ServerRepository repository;
   final SshGateway gateway;
   final AgentNotifier notifier;
+  final ForegroundServiceController foregroundService;
 
   static AppServices of(BuildContext context) {
     final services = context.dependOnInheritedWidgetOfExactType<AppServices>();

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:xterm/xterm.dart';
 
+import '../../core/background/foreground_service.dart';
 import '../../core/claude/claude_command.dart';
 import '../../core/notifications/agent_notifier.dart';
 import '../../core/ssh/ssh_gateway.dart';
@@ -31,24 +32,55 @@ class WorkspacePage extends StatefulWidget {
   State<WorkspacePage> createState() => _WorkspacePageState();
 }
 
-class _WorkspacePageState extends State<WorkspacePage> {
+class _WorkspacePageState extends State<WorkspacePage>
+    with WidgetsBindingObserver {
   final List<TerminalSession> _sessions = [];
   int _active = 0;
   final _compose = TextEditingController();
   late double _fontSize = widget.repository.terminalFontSize();
   bool? _wakelockOn;
+  late ForegroundServiceController _foregroundService;
 
   TerminalSession? get _current =>
       _sessions.isEmpty ? null : _sessions[_active];
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Cached here, not read from context in dispose(): InheritedWidget
+    // lookups are not allowed once a State starts unmounting.
+    _foregroundService = AppServices.of(context).foregroundService;
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     for (final session in _sessions) {
       session.dispose();
     }
     _compose.dispose();
     WakelockPlus.disable();
+    _foregroundService.stop();
     super.dispose();
+  }
+
+  /// While backgrounded with a live session, a foreground service keeps the
+  /// process (and the SSH connection) from being frozen or killed. Coming
+  /// back to the foreground stops it — Flutter itself already keeps the app
+  /// alive while it is visible.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      if (_sessions.any((s) => s.isRunning)) _foregroundService.start();
+    } else if (state == AppLifecycleState.resumed) {
+      _foregroundService.stop();
+    }
   }
 
   /// Keeps the screen on while a Claude process is actively running in any
