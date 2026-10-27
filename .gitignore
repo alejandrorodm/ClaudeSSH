@@ -8,3 +8,5 @@ android/local.properties
 android/.gradle/
 android/app/.cxx/
 *.bak-*
+.flutter-plugins
+.flutter-plugins-dependencies
