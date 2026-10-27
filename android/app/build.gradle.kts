@@ -30,6 +30,16 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        getByName("debug") {
+            // Force all signing schemes on: some OEM installers (e.g. MIUI)
+            // reject sideloaded APKs that only carry a v2/v3 signature.
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+        }
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
