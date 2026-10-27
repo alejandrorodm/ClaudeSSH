@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dartssh2/dartssh2.dart';
 import 'package:path_provider/path_provider.dart';
@@ -51,6 +52,37 @@ class RemoteFileService {
           return a.name.toLowerCase().compareTo(b.name.toLowerCase());
         });
     return entries;
+  }
+
+  /// Streams [localPath] to `<remoteDir>/<fileName>` over SFTP.
+  /// [onProgress] receives bytes sent so far and the total, when known.
+  Future<void> upload(
+    String localPath,
+    String remoteDir,
+    String fileName, {
+    void Function(int sent, int? total)? onProgress,
+  }) async {
+    final sftp = await _sftpClient;
+    final localFile = File(localPath);
+    final total = await localFile.length();
+    final remotePath = '$remoteDir/$fileName';
+
+    final remote = await sftp.open(
+      remotePath,
+      mode:
+          SftpFileOpenMode.write |
+          SftpFileOpenMode.create |
+          SftpFileOpenMode.truncate,
+    );
+    try {
+      final writer = remote.write(
+        localFile.openRead().cast<List<int>>().map(Uint8List.fromList),
+        onProgress: (sent) => onProgress?.call(sent, total),
+      );
+      await writer.done;
+    } finally {
+      await remote.close();
+    }
   }
 
   /// Streams [remotePath] into the app's download folder and returns the file.

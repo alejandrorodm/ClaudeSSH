@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -37,6 +38,9 @@ class _FileBrowserPageState extends State<FileBrowserPage> {
   bool _loading = true;
 
   _Download? _download;
+  _Upload? _upload;
+
+  bool get _busy => _download != null || _upload != null;
 
   @override
   void initState() {
@@ -104,9 +108,42 @@ class _FileBrowserPageState extends State<FileBrowserPage> {
     await _downloadFile(entry);
   }
 
+  Future<void> _uploadFile() async {
+    final service = _service;
+    if (service == null || _busy) return;
+    final picked = await FilePicker.pickFile();
+    if (picked?.path == null || !mounted) return;
+    final localPath = picked!.path!;
+    final name = picked.name;
+
+    setState(() => _upload = _Upload(name, 0, picked.lengthSync()));
+    try {
+      await service.upload(
+        localPath,
+        _path,
+        name,
+        onProgress: (sent, total) {
+          if (!mounted) return;
+          setState(() => _upload = _Upload(name, sent, total));
+        },
+      );
+      if (!mounted) return;
+      setState(() => _upload = null);
+      await _open(_path);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Uploaded $name')));
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _upload = null);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Upload failed: $error')));
+    }
+  }
+
   Future<void> _downloadFile(RemoteEntry entry) async {
     final service = _service;
-    if (service == null || _download != null) return;
+    if (service == null || _busy) return;
     setState(() => _download = _Download(entry.name, 0, entry.size));
     try {
       final file = await service.download(
@@ -181,6 +218,11 @@ class _FileBrowserPageState extends State<FileBrowserPage> {
         title: const Text('Files'),
         actions: [
           IconButton(
+            tooltip: 'Upload a file here',
+            icon: const Icon(Icons.upload_file_outlined),
+            onPressed: _service == null || _busy ? null : _uploadFile,
+          ),
+          IconButton(
             tooltip: 'Home',
             icon: const Icon(Icons.home_outlined),
             onPressed: _service == null || _loading ? null : () => _open(''),
@@ -189,6 +231,7 @@ class _FileBrowserPageState extends State<FileBrowserPage> {
       ),
       body: Column(
         children: [
+          if (_upload != null) _UploadBar(upload: _upload!),
           if (_download != null) _DownloadBar(download: _download!),
           ListTile(
             dense: true,
@@ -249,7 +292,7 @@ class _FileBrowserPageState extends State<FileBrowserPage> {
           trailing: entry.isDirectory
               ? const Icon(Icons.chevron_right)
               : const Icon(Icons.download_outlined),
-          onTap: _download == null ? () => _tap(entry) : null,
+          onTap: _busy ? null : () => _tap(entry),
         );
       },
     );
@@ -283,6 +326,41 @@ class _DownloadBar extends StatelessWidget {
           Text(
             'Downloading ${download.name}'
             ' — ${formatBytes(download.received)}'
+            '${total == null ? '' : ' of ${formatBytes(total)}'}',
+          ),
+          const SizedBox(height: 6),
+          LinearProgressIndicator(value: progress),
+        ],
+      ),
+    );
+  }
+}
+
+class _Upload {
+  const _Upload(this.name, this.sent, this.total);
+
+  final String name;
+  final int sent;
+  final int? total;
+}
+
+class _UploadBar extends StatelessWidget {
+  const _UploadBar({required this.upload});
+
+  final _Upload upload;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = upload.total;
+    final progress = (total == null || total == 0) ? null : upload.sent / total;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Uploading ${upload.name}'
+            ' — ${formatBytes(upload.sent)}'
             '${total == null ? '' : ' of ${formatBytes(total)}'}',
           ),
           const SizedBox(height: 6),
