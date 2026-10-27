@@ -105,6 +105,19 @@ class ServerRepository {
     return incoming.length;
   }
 
+  /// Whether the app asks to unlock (biometrics or device PIN/pattern) on
+  /// cold start. Off by default: turning it on requires a successful
+  /// authentication first, so the toggle can never lock a user out of an
+  /// app they just installed.
+  bool biometricLockEnabled() =>
+      _preferences.getBool(_biometricLockKey) ?? false;
+
+  Future<void> setBiometricLockEnabled(bool enabled) {
+    return _preferences.setBool(_biometricLockKey, enabled);
+  }
+
+  static const _biometricLockKey = 'security.biometricLock';
+
   static const defaultTerminalFontSize = 13.0;
   static const minTerminalFontSize = 9.0;
   static const maxTerminalFontSize = 24.0;

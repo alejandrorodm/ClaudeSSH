@@ -81,6 +81,21 @@ void main() {
     expect(repository.terminalFontSize(), ServerRepository.minTerminalFontSize);
   });
 
+  test('biometric lock is off by default and persists once set', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final repository = ServerRepository(
+      preferences,
+      const FlutterSecureStorage(),
+    );
+
+    expect(repository.biometricLockEnabled(), isFalse);
+    await repository.setBiometricLockEnabled(true);
+    expect(repository.biometricLockEnabled(), isTrue);
+    await repository.setBiometricLockEnabled(false);
+    expect(repository.biometricLockEnabled(), isFalse);
+  });
+
   group('export / import', () {
     Future<ServerRepository> freshRepository() async {
       SharedPreferences.setMockInitialValues({});

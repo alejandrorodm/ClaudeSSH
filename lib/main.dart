@@ -8,6 +8,7 @@ import 'core/notifications/agent_notifier.dart';
 import 'core/ssh/ssh_gateway.dart';
 import 'core/storage/known_hosts_preferences.dart';
 import 'core/storage/server_repository.dart';
+import 'features/lock/lock_gate.dart';
 import 'features/servers/servers_page.dart';
 
 Future<void> main() async {
@@ -77,7 +78,12 @@ class PhoneSshApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const ServersPage(),
+      home: Builder(
+        builder: (context) => LockGate(
+          repository: AppServices.of(context).repository,
+          child: const ServersPage(),
+        ),
+      ),
     );
   }
 }

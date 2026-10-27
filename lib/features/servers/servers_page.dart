@@ -8,6 +8,7 @@ import '../../main.dart';
 import '../workspace/workspace_page.dart';
 import 'server_form_page.dart';
 import 'server_profile.dart';
+import 'settings_page.dart';
 
 class ServersPage extends StatefulWidget {
   const ServersPage({super.key});
@@ -125,6 +126,17 @@ class _ServersPageState extends State<ServersPage> {
             tooltip: 'Export servers (no passwords or keys)',
             icon: const Icon(Icons.file_download_outlined),
             onPressed: _export,
+          ),
+          IconButton(
+            tooltip: 'Settings',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => SettingsPage(
+                  repository: AppServices.of(context).repository,
+                ),
+              ),
+            ),
           ),
         ],
       ),
