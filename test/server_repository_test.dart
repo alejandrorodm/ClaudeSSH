@@ -81,6 +81,26 @@ void main() {
     expect(repository.terminalFontSize(), ServerRepository.minTerminalFontSize);
   });
 
+  test('last session is unset until a session is remembered', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final repository = ServerRepository(
+      preferences,
+      const FlutterSecureStorage(),
+    );
+
+    expect(repository.lastSession(), isNull);
+    await repository.setLastSession(
+      serverId: 'srv-1',
+      serverName: 'My VPS',
+      directory: '~/project',
+    );
+    final last = repository.lastSession();
+    expect(last!.serverId, 'srv-1');
+    expect(last.serverName, 'My VPS');
+    expect(last.directory, '~/project');
+  });
+
   test('biometric lock is off by default and persists once set', () async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();

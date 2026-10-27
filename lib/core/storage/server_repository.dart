@@ -118,6 +118,36 @@ class ServerRepository {
 
   static const _biometricLockKey = 'security.biometricLock';
 
+  /// Remembers the most recently opened session, so a home screen shortcut
+  /// can jump straight back into it.
+  Future<void> setLastSession({
+    required String serverId,
+    required String serverName,
+    required String directory,
+  }) {
+    return _preferences.setString(
+      _lastSessionKey,
+      jsonEncode({
+        'serverId': serverId,
+        'serverName': serverName,
+        'directory': directory,
+      }),
+    );
+  }
+
+  LastSession? lastSession() {
+    final raw = _preferences.getString(_lastSessionKey);
+    if (raw == null) return null;
+    final map = jsonDecode(raw) as Map<String, dynamic>;
+    return LastSession(
+      serverId: map['serverId'] as String,
+      serverName: map['serverName'] as String,
+      directory: map['directory'] as String,
+    );
+  }
+
+  static const _lastSessionKey = 'lastSession';
+
   static const defaultTerminalFontSize = 13.0;
   static const minTerminalFontSize = 9.0;
   static const maxTerminalFontSize = 24.0;
@@ -167,4 +197,17 @@ class ServerRepository {
 
   String _secretKey(String profileId, String field) =>
       'server.$profileId.$field';
+}
+
+/// The server and folder a "resume last session" shortcut jumps back into.
+class LastSession {
+  const LastSession({
+    required this.serverId,
+    required this.serverName,
+    required this.directory,
+  });
+
+  final String serverId;
+  final String serverName;
+  final String directory;
 }

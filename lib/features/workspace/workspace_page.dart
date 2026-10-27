@@ -22,11 +22,17 @@ class WorkspacePage extends StatefulWidget {
     required this.profile,
     required this.repository,
     required this.gateway,
+    this.initialDirectory,
   });
 
   final ServerProfile profile;
   final ServerRepository repository;
   final SshGateway gateway;
+
+  /// When set (for example from the "resume last session" launcher
+  /// shortcut), a session opens here immediately instead of showing the
+  /// folder browser.
+  final String? initialDirectory;
 
   @override
   State<WorkspacePage> createState() => _WorkspacePageState();
@@ -48,6 +54,12 @@ class _WorkspacePageState extends State<WorkspacePage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    final initialDirectory = widget.initialDirectory;
+    if (initialDirectory != null) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _openSession(initialDirectory),
+      );
+    }
   }
 
   @override
@@ -107,7 +119,10 @@ class _WorkspacePageState extends State<WorkspacePage>
       ),
     );
     if (path == null || !mounted) return;
+    _openSession(path);
+  }
 
+  void _openSession(String path) {
     final session = TerminalSession(
       profile: widget.profile,
       gateway: widget.gateway,
@@ -121,6 +136,7 @@ class _WorkspacePageState extends State<WorkspacePage>
       _active = _sessions.length - 1;
     });
     session.start();
+    AppServices.of(context).launcherShortcuts.remember(widget.profile, path);
   }
 
   /// Notifies only while the app is in the background: if the user is
