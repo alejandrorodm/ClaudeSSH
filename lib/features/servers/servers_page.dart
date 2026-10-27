@@ -1,4 +1,8 @@
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../main.dart';
 import '../workspace/workspace_page.dart';
@@ -57,10 +61,73 @@ class _ServersPageState extends State<ServersPage> {
     );
   }
 
+  Future<void> _export() async {
+    final repository = AppServices.of(context).repository;
+    final json = await repository.exportProfilesJson();
+    if (!mounted) return;
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [
+          XFile.fromData(
+            utf8.encode(json),
+            name: 'claude-ssh-servers.json',
+            mimeType: 'application/json',
+          ),
+        ],
+        subject: 'Claude SSH servers',
+      ),
+    );
+  }
+
+  Future<void> _import() async {
+    final repository = AppServices.of(context).repository;
+    final picked = await FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+    );
+    if (picked == null || !mounted) return;
+    try {
+      final json = await picked.xFile.readAsString();
+      final count = await repository.importProfiles(json);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '$count server${count == 1 ? '' : 's'} imported. '
+            'Passwords and keys were not included — add them again.',
+          ),
+        ),
+      );
+      _reload();
+    } on FormatException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Import failed: $error')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Servers')),
+      appBar: AppBar(
+        title: const Text('Servers'),
+        actions: [
+          IconButton(
+            tooltip: 'Import servers',
+            icon: const Icon(Icons.file_upload_outlined),
+            onPressed: _import,
+          ),
+          IconButton(
+            tooltip: 'Export servers (no passwords or keys)',
+            icon: const Icon(Icons.file_download_outlined),
+            onPressed: _export,
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openForm(),
         icon: const Icon(Icons.add),
