@@ -101,6 +101,76 @@ void main() {
     expect(last.directory, '~/project');
   });
 
+  test('open tabs are unset until a workspace remembers some', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final repository = ServerRepository(
+      preferences,
+      const FlutterSecureStorage(),
+    );
+
+    expect(repository.openTabs('srv-1'), isEmpty);
+    expect(repository.openTabsActiveIndex('srv-1'), 0);
+  });
+
+  test('open tabs round-trip, including which one was active', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final repository = ServerRepository(
+      preferences,
+      const FlutterSecureStorage(),
+    );
+
+    await repository.setOpenTabs(
+      'srv-1',
+      const [
+        OpenTab(directory: '~/project-a', mode: 'build'),
+        OpenTab(directory: '~/project-b', mode: 'plan'),
+      ],
+      active: 1,
+    );
+
+    final tabs = repository.openTabs('srv-1');
+    expect(tabs, hasLength(2));
+    expect(tabs[0].directory, '~/project-a');
+    expect(tabs[0].mode, 'build');
+    expect(tabs[1].directory, '~/project-b');
+    expect(tabs[1].mode, 'plan');
+    expect(repository.openTabsActiveIndex('srv-1'), 1);
+  });
+
+  test('closing every tab clears what was remembered for that server', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final repository = ServerRepository(
+      preferences,
+      const FlutterSecureStorage(),
+    );
+
+    await repository.setOpenTabs('srv-1', const [
+      OpenTab(directory: '~/project-a', mode: 'build'),
+    ]);
+    await repository.setOpenTabs('srv-1', const []);
+
+    expect(repository.openTabs('srv-1'), isEmpty);
+    expect(repository.openTabsActiveIndex('srv-1'), 0);
+  });
+
+  test('open tabs for one server never leak into another', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final repository = ServerRepository(
+      preferences,
+      const FlutterSecureStorage(),
+    );
+
+    await repository.setOpenTabs('srv-1', const [
+      OpenTab(directory: '~/project-a', mode: 'build'),
+    ]);
+
+    expect(repository.openTabs('srv-2'), isEmpty);
+  });
+
   test('biometric lock is off by default and persists once set', () async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();

@@ -56,10 +56,47 @@ class _WorkspacePageState extends State<WorkspacePage>
     WidgetsBinding.instance.addObserver(this);
     final initialDirectory = widget.initialDirectory;
     if (initialDirectory != null) {
+      // Resumes the conversation already in that folder, same as any other
+      // restored tab below — a launcher shortcut is not a brand new chat.
       WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _openSession(initialDirectory),
+        (_) => _openSession(initialDirectory, continueConversation: true),
       );
+    } else {
+      _restoreTabs();
     }
+  }
+
+  /// Reopens whatever tabs were still open last time this server's workspace
+  /// closed — including Android killing the app's process while it was
+  /// backgrounded, which drops every in-memory session with it.
+  void _restoreTabs() {
+    final restored = widget.repository.openTabs(widget.profile.id);
+    if (restored.isEmpty) return;
+    final activeIndex = widget.repository.openTabsActiveIndex(
+      widget.profile.id,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final tab in restored) {
+        if (!mounted) return;
+        _openSession(
+          tab.directory,
+          mode: ClaudeMode.values.firstWhere(
+            (m) => m.name == tab.mode,
+            orElse: () => ClaudeMode.build,
+          ),
+          continueConversation: true,
+        );
+      }
+      if (mounted) {
+        setState(
+          () => _active = activeIndex.clamp(0, _sessions.length - 1),
+        );
+        // The loop above persisted "active" as whichever tab opened last;
+        // overwrite it now with the index actually restored above, so a
+        // second process kill resumes on the right tab too.
+        _persistTabs();
+      }
+    });
   }
 
   @override
@@ -122,21 +159,39 @@ class _WorkspacePageState extends State<WorkspacePage>
     _openSession(path);
   }
 
-  void _openSession(String path) {
+  void _openSession(
+    String path, {
+    ClaudeMode mode = ClaudeMode.build,
+    bool continueConversation = false,
+  }) {
     final session = TerminalSession(
       profile: widget.profile,
       gateway: widget.gateway,
       loadCredentials: () =>
           widget.repository.credentialsFor(widget.profile.id),
       directory: path,
+      mode: mode,
     );
     session.onEvent = (event) => _notify(session, event);
     setState(() {
       _sessions.add(session);
       _active = _sessions.length - 1;
     });
-    session.start();
+    session.start(continueConversation: continueConversation);
     AppServices.of(context).launcherShortcuts.remember(widget.profile, path);
+    _persistTabs();
+  }
+
+  /// Saves every open tab (folder + mode) and which one is active, so
+  /// [_restoreTabs] can bring them all back later.
+  void _persistTabs() {
+    widget.repository.setOpenTabs(
+      widget.profile.id,
+      _sessions
+          .map((s) => OpenTab(directory: s.directory, mode: s.mode.name))
+          .toList(),
+      active: _active,
+    );
   }
 
   /// Notifies only while the app is in the background: if the user is
@@ -167,6 +222,12 @@ class _WorkspacePageState extends State<WorkspacePage>
       if (_active < 0) _active = 0;
     });
     session.dispose();
+    _persistTabs();
+  }
+
+  void _selectTab(int index) {
+    setState(() => _active = index);
+    _persistTabs();
   }
 
   /// Resizing the font changes the column count, and the terminal reports the
@@ -244,7 +305,10 @@ class _WorkspacePageState extends State<WorkspacePage>
         ),
       ),
     );
-    if (chosen != null) session.setMode(chosen);
+    if (chosen != null) {
+      await session.setMode(chosen);
+      if (mounted) _persistTabs();
+    }
   }
 
   @override
@@ -294,7 +358,7 @@ class _WorkspacePageState extends State<WorkspacePage>
               _TabStrip(
                 sessions: _sessions,
                 active: _active,
-                onSelect: (index) => setState(() => _active = index),
+                onSelect: _selectTab,
                 onClose: _closeSession,
               ),
               const Divider(height: 1),

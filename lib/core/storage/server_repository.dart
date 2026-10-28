@@ -148,6 +148,53 @@ class ServerRepository {
 
   static const _lastSessionKey = 'lastSession';
 
+  /// Every tab open in [serverId]'s workspace, in order, so they can be
+  /// restored if Android kills the app's process while backgrounded. Empty
+  /// when the server was never opened, or every tab was closed.
+  List<OpenTab> openTabs(String serverId) {
+    final raw = _preferences.getString(_openTabsKey(serverId));
+    if (raw == null) return [];
+    final list = jsonDecode(raw) as List<dynamic>;
+    return list
+        .map(
+          (item) => OpenTab(
+            directory: (item as Map<String, dynamic>)['directory'] as String,
+            mode: item['mode'] as String,
+          ),
+        )
+        .toList();
+  }
+
+  /// Which of [openTabs] was active, 0 when none was remembered.
+  int openTabsActiveIndex(String serverId) =>
+      _preferences.getInt(_openTabsActiveKey(serverId)) ?? 0;
+
+  /// Remembers every open tab for [serverId]. An empty [tabs] list clears
+  /// whatever was remembered, e.g. because the user closed every tab.
+  Future<void> setOpenTabs(
+    String serverId,
+    List<OpenTab> tabs, {
+    int active = 0,
+  }) async {
+    if (tabs.isEmpty) {
+      await _preferences.remove(_openTabsKey(serverId));
+      await _preferences.remove(_openTabsActiveKey(serverId));
+      return;
+    }
+    await _preferences.setString(
+      _openTabsKey(serverId),
+      jsonEncode(
+        tabs.map((t) => {'directory': t.directory, 'mode': t.mode}).toList(),
+      ),
+    );
+    await _preferences.setInt(_openTabsActiveKey(serverId), active);
+  }
+
+  String _openTabsKey(String serverId) => 'workspace.tabs.$serverId';
+
+  String _openTabsActiveKey(String serverId) =>
+      'workspace.tabs.$serverId.active';
+
   static const defaultTerminalFontSize = 13.0;
   static const minTerminalFontSize = 9.0;
   static const maxTerminalFontSize = 24.0;
@@ -210,4 +257,14 @@ class LastSession {
   final String serverId;
   final String serverName;
   final String directory;
+}
+
+/// One restored workspace tab: the folder it was open in and its
+/// [ClaudeMode.name] (kept as a plain string so storage does not depend on
+/// the claude feature).
+class OpenTab {
+  const OpenTab({required this.directory, required this.mode});
+
+  final String directory;
+  final String mode;
 }
