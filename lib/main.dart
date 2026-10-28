@@ -28,11 +28,11 @@ Future<void> main() async {
   final notifier = AgentNotifier(FlutterLocalNotificationsPlugin());
   final shortcuts = LauncherShortcuts(repository);
 
-  shortcuts.initialize((last) async {
+  Future<void> openWorkspace(String serverId, String directory) async {
     final profiles = await repository.loadAll();
     ServerProfile? profile;
     for (final candidate in profiles) {
-      if (candidate.id == last.serverId) profile = candidate;
+      if (candidate.id == serverId) profile = candidate;
     }
     if (profile == null) return; // the server was removed since
     navigatorKey.currentState?.push(
@@ -41,11 +41,15 @@ Future<void> main() async {
           profile: profile!,
           repository: repository,
           gateway: gateway,
-          initialDirectory: last.directory,
+          initialDirectory: directory,
         ),
       ),
     );
-  });
+  }
+
+  shortcuts.initialize(
+    (last) => openWorkspace(last.serverId, last.directory),
+  );
 
   runApp(
     AppServices(
@@ -60,7 +64,15 @@ Future<void> main() async {
 
   // After the first frame: a slow or failed permission prompt must never
   // block the UI from appearing.
-  notifier.init().catchError((Object _) {});
+  notifier
+      .init(
+        onTap: (payload) {
+          final parsed = parseSessionPayload(payload);
+          if (parsed == null) return;
+          openWorkspace(parsed.serverId, parsed.directory);
+        },
+      )
+      .catchError((Object _) {});
   shortcuts.refresh();
 }
 

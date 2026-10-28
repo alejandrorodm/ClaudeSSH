@@ -216,6 +216,8 @@ class _WorkspacePageState extends State<WorkspacePage>
       event: event,
       title: '${widget.profile.name} · ${session.title}',
       body: body,
+      // Parsed back in main.dart to jump straight to this session's folder.
+      payload: encodeSessionPayload(widget.profile.id, session.directory),
     );
   }
 

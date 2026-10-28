@@ -3,6 +3,23 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 /// What happened to a Claude session that the user should hear about.
 enum AgentEvent { finished, failed, needsYou }
 
+/// Packs [serverId]/[directory] into the payload [AgentNotifier.show] sends,
+/// so tapping the notification can jump straight to that session. Reversed
+/// by [parseSessionPayload].
+String encodeSessionPayload(String serverId, String directory) =>
+    '$serverId|$directory';
+
+/// Reverses [encodeSessionPayload], or null if [payload] isn't one (for
+/// example a payload from a version of the app that shaped it differently).
+({String serverId, String directory})? parseSessionPayload(String payload) {
+  final separator = payload.indexOf('|');
+  if (separator == -1) return null;
+  return (
+    serverId: payload.substring(0, separator),
+    directory: payload.substring(separator + 1),
+  );
+}
+
 /// Shows Claude session updates in the Android notification shade.
 ///
 /// The small icon is the mascot in the status bar, drawn for the event.
@@ -14,11 +31,18 @@ class AgentNotifier {
   static const _channelId = 'agents';
   static const _channelName = 'Claude agents';
 
-  Future<void> init() async {
+  /// [onTap] fires with whatever [show] was given as [payload] when the
+  /// user taps the notification, so the app can jump straight to that
+  /// session's tab instead of just opening to wherever it was.
+  Future<void> init({void Function(String payload)? onTap}) async {
     await _plugin.initialize(
       settings: const InitializationSettings(
         android: AndroidInitializationSettings('ic_stat_claude_done'),
       ),
+      onDidReceiveNotificationResponse: (response) {
+        final payload = response.payload;
+        if (payload != null) onTap?.call(payload);
+      },
     );
     final android = _plugin
         .resolvePlatformSpecificImplementation<
@@ -40,6 +64,7 @@ class AgentNotifier {
     required AgentEvent event,
     required String title,
     required String body,
+    String? payload,
   }) {
     // Notifications are best effort: a failure here must never reach the UI.
     return _plugin
@@ -56,6 +81,7 @@ class AgentNotifier {
               priority: Priority.high,
             ),
           ),
+          payload: payload,
         )
         .catchError((Object _) {});
   }
