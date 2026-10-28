@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show ScrollController;
 import 'package:xterm/xterm.dart';
 
 import '../../core/claude/claude_command.dart';
@@ -50,6 +51,12 @@ class TerminalSession extends ChangeNotifier {
 
   final Terminal terminal = Terminal(maxLines: 10000);
 
+  /// Drives the terminal's scroll position directly, so a swipe always
+  /// scrolls the local view even while the remote app owns the alternate
+  /// screen buffer (xterm's own alt-buffer handling only forwards swipes as
+  /// wheel/arrow input to the remote process, it never scrolls locally).
+  final ScrollController scrollController = ScrollController();
+
   /// Called when the session needs the user or ends on its own.
   void Function(AgentEvent event)? onEvent;
 
@@ -79,9 +86,16 @@ class TerminalSession extends ChangeNotifier {
 
   bool get isRunning => status == SessionStatus.running;
 
-  /// Starts (or restarts) Claude. With [continueConversation] it resumes the
-  /// most recent conversation in [directory].
-  Future<void> start({bool continueConversation = false}) async {
+  /// Starts (or reattaches to) Claude. With [continueConversation] it
+  /// resumes the most recent conversation in [directory] — only takes
+  /// effect when a new remote process actually starts, not when this just
+  /// reattaches to one already running in its tmux session. [forceRestart]
+  /// kills that tmux session first, so a permission-mode switch actually
+  /// restarts Claude with the new mode instead of reattaching to the old one.
+  Future<void> start({
+    bool continueConversation = false,
+    bool forceRestart = false,
+  }) async {
     _reconnectTimer?.cancel();
     _stoppedByUser = false;
     await _close();
@@ -99,6 +113,7 @@ class TerminalSession extends ChangeNotifier {
           workingDirectory: directory,
           mode: mode,
           continueConversation: continueConversation,
+          forceRestart: forceRestart,
         ),
         pty: SSHPtyConfig(
           type: 'xterm-256color',
@@ -177,7 +192,24 @@ class TerminalSession extends ChangeNotifier {
     if (next == mode) return;
     mode = next;
     terminal.write('\r\n\x1b[2m-- mode: ${next.label} --\x1b[0m\r\n');
-    await start(continueConversation: true);
+    await start(continueConversation: true, forceRestart: true);
+  }
+
+  /// Ends Claude on the remote host on purpose (the user closed this tab),
+  /// instead of just detaching, which [dispose] does on its own — a detach
+  /// leaves Claude running in its tmux session so a dropped connection, or
+  /// the app being killed in the background, can reattach to it later.
+  Future<void> closeRemote() async {
+    cancelAutoReconnect();
+    final client = _client;
+    if (client == null) return;
+    try {
+      final kill = await client.execute(buildKillSessionCommand(directory));
+      await kill.done;
+    } catch (_) {
+      // Best effort: if this fails the tmux session just lingers on the
+      // remote host until it is cleaned up manually.
+    }
   }
 
   /// Sends raw key input, for example an escape sequence from the toolbar.
@@ -254,6 +286,7 @@ class TerminalSession extends ChangeNotifier {
   void dispose() {
     cancelAutoReconnect();
     _promptDebounce?.cancel();
+    scrollController.dispose();
     _close();
     super.dispose();
   }

@@ -249,6 +249,9 @@ class _WorkspacePageState extends State<WorkspacePage>
       if (_active >= _sessions.length) _active = _sessions.length - 1;
       if (_active < 0) _active = 0;
     });
+    // Closing a tab on purpose ends Claude remotely too (otherwise it would
+    // keep running detached in tmux, same as a dropped connection does).
+    session.closeRemote();
     session.dispose();
     _persistTabs();
   }
@@ -446,16 +449,32 @@ class _WorkspacePageState extends State<WorkspacePage>
     return Stack(
       children: [
         Positioned.fill(
-          child: TerminalView(
-            session.terminal,
-            key: ValueKey(session),
-            autofocus: true,
-            textStyle: TerminalStyle(fontSize: _fontSize),
-            // Without this, a swipe while the remote app uses the alternate
-            // screen buffer (e.g. a full-screen redraw) gets converted into
-            // simulated arrow-key presses sent to the remote process instead
-            // of scrolling the local view.
-            simulateScroll: false,
+          child: Listener(
+            // xterm only scrolls the local view on its own while the remote
+            // app is in the normal screen buffer; in the alternate buffer
+            // (e.g. Claude's full-screen UI) it instead reports the swipe as
+            // wheel/arrow input to the remote process, which Claude ignores,
+            // so the swipe visibly does nothing. Drive the scroll position
+            // directly so a swipe always scrolls the local view.
+            onPointerMove: (event) {
+              if (!session.terminal.isUsingAltBuffer) return;
+              if (!session.scrollController.hasClients) return;
+              final position = session.scrollController.position;
+              session.scrollController.jumpTo(
+                (position.pixels - event.delta.dy).clamp(
+                  position.minScrollExtent,
+                  position.maxScrollExtent,
+                ),
+              );
+            },
+            child: TerminalView(
+              session.terminal,
+              key: ValueKey(session),
+              autofocus: true,
+              textStyle: TerminalStyle(fontSize: _fontSize),
+              scrollController: session.scrollController,
+              simulateScroll: false,
+            ),
           ),
         ),
         if (session.status != SessionStatus.running)
