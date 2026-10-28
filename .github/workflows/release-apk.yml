@@ -1,0 +1,41 @@
+name: Release APK
+
+# Builds the release APK and attaches it to a GitHub Release. The release
+# build signs with android/app/debug.keystore (committed, not a secret — see
+# the signingConfigs comment in android/app/build.gradle.kts), so every
+# build uses the same key and a new release installs cleanly over an older
+# one instead of Android rejecting it as a signature mismatch.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.47.8"
+          cache: true
+
+      - run: flutter pub get
+
+      - run: ./tool/build_release.sh
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: build/app/outputs/flutter-apk/claude-ssh-release.apk
+          generate_release_notes: true

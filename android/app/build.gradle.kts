@@ -32,6 +32,15 @@ android {
 
     signingConfigs {
         getByName("debug") {
+            // Checked-in debug key (standard Android debug credentials, not a
+            // secret) instead of each machine's own ~/.android/debug.keystore,
+            // so every build — local or CI — signs with the same key. That
+            // lets a new release APK install over an older one instead of
+            // Android refusing it as a signature mismatch.
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
             // Force all signing schemes on: some OEM installers (e.g. MIUI)
             // reject sideloaded APKs that only carry a v2/v3 signature.
             enableV1Signing = true

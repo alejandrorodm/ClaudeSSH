@@ -12,3 +12,9 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# Exception: app/debug.keystore holds Android's standard, publicly known
+# debug credentials (storepass/keypass "android", alias "androiddebugkey") —
+# never a secret. It's committed so every build, local or CI, signs release
+# APKs with the same key (see signingConfigs in android/app/build.gradle.kts).
+!app/debug.keystore
