@@ -419,6 +419,10 @@ class _WorkspacePageState extends State<WorkspacePage>
                   mode: current.mode,
                   onModeTap: _pickMode,
                   onSend: _sendMessage,
+                  // Anything typed while the session isn't running (still
+                  // connecting, or dropped and waiting on "Resume") would
+                  // otherwise be sent to _sendBytes and silently discarded.
+                  enabled: current.status == SessionStatus.running,
                 ),
               ],
             ],
@@ -447,6 +451,11 @@ class _WorkspacePageState extends State<WorkspacePage>
             key: ValueKey(session),
             autofocus: true,
             textStyle: TerminalStyle(fontSize: _fontSize),
+            // Without this, a swipe while the remote app uses the alternate
+            // screen buffer (e.g. a full-screen redraw) gets converted into
+            // simulated arrow-key presses sent to the remote process instead
+            // of scrolling the local view.
+            simulateScroll: false,
           ),
         ),
         if (session.status != SessionStatus.running)
@@ -918,18 +927,62 @@ class _SearchSheetState extends State<_SearchSheet> {
   }
 }
 
-class _Composer extends StatelessWidget {
+class _Composer extends StatefulWidget {
   const _Composer({
     required this.controller,
     required this.mode,
     required this.onModeTap,
     required this.onSend,
+    required this.enabled,
   });
 
   final TextEditingController controller;
   final ClaudeMode mode;
   final VoidCallback onModeTap;
   final VoidCallback onSend;
+
+  /// Whether the session can currently receive input. When false, sending
+  /// would be silently discarded, so the composer is disabled instead.
+  final bool enabled;
+
+  @override
+  State<_Composer> createState() => _ComposerState();
+}
+
+class _ComposerState extends State<_Composer> {
+  final _fieldScroll = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_scrollToCaret);
+  }
+
+  @override
+  void didUpdateWidget(_Composer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_scrollToCaret);
+      widget.controller.addListener(_scrollToCaret);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_scrollToCaret);
+    _fieldScroll.dispose();
+    super.dispose();
+  }
+
+  // Keeps the line being typed on screen: the field scrolls internally once
+  // the text grows past its visible height, but it doesn't always follow the
+  // caret on its own, so jump to the bottom after every change.
+  void _scrollToCaret() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_fieldScroll.hasClients) return;
+      _fieldScroll.jumpTo(_fieldScroll.position.maxScrollExtent);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -941,23 +994,27 @@ class _Composer extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             ActionChip(
-              label: Text(mode.label),
+              label: Text(widget.mode.label),
               avatar: const Icon(Icons.tune, size: 18),
-              onPressed: onModeTap,
+              onPressed: widget.onModeTap,
             ),
             const SizedBox(width: 8),
             Expanded(
               child: TextField(
-                controller: controller,
+                controller: widget.controller,
+                scrollController: _fieldScroll,
+                enabled: widget.enabled,
                 minLines: 1,
                 maxLines: 5,
-                decoration: const InputDecoration(
-                  hintText: 'Message Claude',
+                decoration: InputDecoration(
+                  hintText: widget.enabled
+                      ? 'Message Claude'
+                      : 'Session not connected…',
                   isDense: true,
-                  border: OutlineInputBorder(
+                  border: const OutlineInputBorder(
                     borderRadius: BorderRadius.all(Radius.circular(20)),
                   ),
-                  contentPadding: EdgeInsets.symmetric(
+                  contentPadding: const EdgeInsets.symmetric(
                     horizontal: 14,
                     vertical: 10,
                   ),
@@ -968,7 +1025,7 @@ class _Composer extends StatelessWidget {
             IconButton.filled(
               tooltip: 'Send',
               icon: const Icon(Icons.arrow_upward_rounded),
-              onPressed: onSend,
+              onPressed: widget.enabled ? widget.onSend : null,
             ),
           ],
         ),

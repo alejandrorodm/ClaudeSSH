@@ -4,11 +4,21 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../core/remote/folder_label.dart';
 import '../../main.dart';
 import '../workspace/workspace_page.dart';
 import 'server_form_page.dart';
 import 'server_profile.dart';
 import 'settings_page.dart';
+
+/// One favorite folder shortcut on the home screen, resolved across every
+/// saved server.
+class _FavoriteEntry {
+  const _FavoriteEntry(this.server, this.path);
+
+  final ServerProfile server;
+  final String path;
+}
 
 class ServersPage extends StatefulWidget {
   const ServersPage({super.key});
@@ -49,7 +59,7 @@ class _ServersPageState extends State<ServersPage> {
     _reload();
   }
 
-  void _openChat(ServerProfile profile) {
+  void _openChat(ServerProfile profile, {String? initialDirectory}) {
     final services = AppServices.of(context);
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -57,9 +67,19 @@ class _ServersPageState extends State<ServersPage> {
           profile: profile,
           repository: services.repository,
           gateway: services.gateway,
+          initialDirectory: initialDirectory,
         ),
       ),
     );
+  }
+
+  List<_FavoriteEntry> _favoriteEntries(List<ServerProfile> servers) {
+    final repository = AppServices.of(context).repository;
+    return [
+      for (final server in servers)
+        for (final path in repository.favoriteFolders(server.id))
+          _FavoriteEntry(server, path),
+    ];
   }
 
   Future<void> _export() async {
@@ -155,11 +175,22 @@ class _ServersPageState extends State<ServersPage> {
           if (servers.isEmpty) {
             return const _EmptyState();
           }
+          final favorites = _favoriteEntries(servers);
           return ListView.separated(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-            itemCount: servers.length,
+            itemCount: servers.length + (favorites.isEmpty ? 0 : 1),
             separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
+              if (favorites.isNotEmpty) {
+                if (index == 0) {
+                  return _FavoriteFoldersRow(
+                    favorites: favorites,
+                    onTap: (entry) =>
+                        _openChat(entry.server, initialDirectory: entry.path),
+                  );
+                }
+                index -= 1;
+              }
               final server = servers[index];
               return Card(
                 child: ListTile(
@@ -192,6 +223,46 @@ class _ServersPageState extends State<ServersPage> {
           );
         },
       ),
+    );
+  }
+}
+
+class _FavoriteFoldersRow extends StatelessWidget {
+  const _FavoriteFoldersRow({required this.favorites, required this.onTap});
+
+  final List<_FavoriteEntry> favorites;
+  final ValueChanged<_FavoriteEntry> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
+          child: Text(
+            'Favorite folders',
+            style: Theme.of(context).textTheme.labelMedium,
+          ),
+        ),
+        SizedBox(
+          height: 40,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: favorites.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 6),
+            itemBuilder: (context, index) {
+              final entry = favorites[index];
+              return ActionChip(
+                avatar: const Icon(Icons.star, size: 16),
+                label: Text('${entry.server.name} · ${folderLabel(entry.path)}'),
+                tooltip: entry.path,
+                onPressed: () => onTap(entry),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
