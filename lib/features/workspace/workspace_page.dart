@@ -450,14 +450,17 @@ class _WorkspacePageState extends State<WorkspacePage>
       children: [
         Positioned.fill(
           child: Listener(
-            // xterm only scrolls the local view on its own while the remote
-            // app is in the normal screen buffer; in the alternate buffer
-            // (e.g. Claude's full-screen UI) it instead reports the swipe as
-            // wheel/arrow input to the remote process, which Claude ignores,
-            // so the swipe visibly does nothing. Drive the scroll position
-            // directly so a swipe always scrolls the local view.
+            // xterm's own gesture handling doesn't reliably scroll the
+            // terminal from a touch drag in this widget tree (it either
+            // reports the swipe as wheel/arrow input to the remote process
+            // while Claude owns the alternate screen buffer, which Claude
+            // ignores, or some other recognizer further down — selection,
+            // the on-screen keyboard's text field — claims the gesture
+            // first). Drive the scroll position directly from the raw
+            // pointer stream instead, unconditionally: Listener always sees
+            // every pointer move regardless of which gesture recognizer
+            // ends up "winning" it.
             onPointerMove: (event) {
-              if (!session.terminal.isUsingAltBuffer) return;
               if (!session.scrollController.hasClients) return;
               final position = session.scrollController.position;
               session.scrollController.jumpTo(
