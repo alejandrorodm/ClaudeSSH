@@ -19,11 +19,18 @@ class MainActivity : FlutterFragmentActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "start" -> {
-                        launchService(serviceIntent(SshForegroundService.ACTION_START))
+                        startInForeground()
                         result.success(null)
                     }
                     "stop" -> {
-                        launchService(serviceIntent(SshForegroundService.ACTION_STOP))
+                        // Must go through plain stopService(), never
+                        // startForegroundService(): on Android 8+, that call
+                        // requires Service.startForeground() within 5
+                        // seconds no matter what the intent is for, and a
+                        // stop never calls it — the OS then kills the whole
+                        // app with ForegroundServiceDidNotStartInTimeException.
+                        // Safe to call even if the service isn't running.
+                        stopService(Intent(this, SshForegroundService::class.java))
                         result.success(null)
                     }
                     else -> result.notImplemented()
@@ -31,13 +38,9 @@ class MainActivity : FlutterFragmentActivity() {
             }
     }
 
-    private fun serviceIntent(action: String): Intent {
+    private fun startInForeground() {
         val intent = Intent(this, SshForegroundService::class.java)
-        intent.action = action
-        return intent
-    }
-
-    private fun launchService(intent: Intent) {
+        intent.action = SshForegroundService.ACTION_START
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent)
         } else {

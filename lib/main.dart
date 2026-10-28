@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -18,8 +20,22 @@ import 'features/workspace/workspace_page.dart';
 /// any widget's own BuildContext.
 final navigatorKey = GlobalKey<NavigatorState>();
 
-Future<void> main() async {
+/// Without this, an exception on any unawaited Future (a background SSH
+/// retry, a plugin callback, a persisted-state write) is otherwise uncaught
+/// and can take the whole process down instead of just failing that one
+/// operation — the app "closes" with no visible error.
+void main() {
+  runZonedGuarded(_main, (error, stack) {
+    debugPrint('Uncaught error: $error\n$stack');
+  });
+}
+
+Future<void> _main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    debugPrint('Uncaught Flutter error: ${details.exceptionAsString()}');
+  };
   final preferences = await SharedPreferences.getInstance();
   final secureStorage = const FlutterSecureStorage();
   final knownHosts = KnownHostsPreferences(preferences);
