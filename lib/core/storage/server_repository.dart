@@ -195,6 +195,46 @@ class ServerRepository {
   String _openTabsActiveKey(String serverId) =>
       'workspace.tabs.$serverId.active';
 
+  /// Folders marked favorite in [serverId]'s folder browser, for one-tap
+  /// entry without browsing there again.
+  List<String> favoriteFolders(String serverId) =>
+      _preferences.getStringList(_favoritesKey(serverId)) ?? const [];
+
+  bool isFavoriteFolder(String serverId, String directory) =>
+      favoriteFolders(serverId).contains(directory);
+
+  /// Adds [directory] to [serverId]'s favorites, or removes it if it was
+  /// already there.
+  Future<void> toggleFavoriteFolder(String serverId, String directory) {
+    final favorites = [...favoriteFolders(serverId)];
+    if (!favorites.remove(directory)) favorites.add(directory);
+    return _preferences.setStringList(_favoritesKey(serverId), favorites);
+  }
+
+  String _favoritesKey(String serverId) => 'workspace.favorites.$serverId';
+
+  /// How many recently opened folders [rememberRecentFolder] keeps per
+  /// server, oldest dropped first.
+  static const maxRecentFolders = 8;
+
+  /// Folders recently opened in [serverId]'s workspace, most recent first.
+  List<String> recentFolders(String serverId) =>
+      _preferences.getStringList(_recentFoldersKey(serverId)) ?? const [];
+
+  /// Moves [directory] to the front of [serverId]'s recent folders,
+  /// capped at [maxRecentFolders].
+  Future<void> rememberRecentFolder(String serverId, String directory) {
+    final recents = [...recentFolders(serverId)];
+    recents.remove(directory);
+    recents.insert(0, directory);
+    if (recents.length > maxRecentFolders) {
+      recents.removeRange(maxRecentFolders, recents.length);
+    }
+    return _preferences.setStringList(_recentFoldersKey(serverId), recents);
+  }
+
+  String _recentFoldersKey(String serverId) => 'workspace.recents.$serverId';
+
   static const defaultTerminalFontSize = 13.0;
   static const minTerminalFontSize = 9.0;
   static const maxTerminalFontSize = 24.0;

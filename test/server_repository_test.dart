@@ -171,6 +171,79 @@ void main() {
     expect(repository.openTabs('srv-2'), isEmpty);
   });
 
+  test('a folder starts out not favorite and toggles on and off', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final repository = ServerRepository(
+      preferences,
+      const FlutterSecureStorage(),
+    );
+
+    expect(repository.isFavoriteFolder('srv-1', '~/project'), isFalse);
+    await repository.toggleFavoriteFolder('srv-1', '~/project');
+    expect(repository.isFavoriteFolder('srv-1', '~/project'), isTrue);
+    expect(repository.favoriteFolders('srv-1'), ['~/project']);
+
+    await repository.toggleFavoriteFolder('srv-1', '~/project');
+    expect(repository.isFavoriteFolder('srv-1', '~/project'), isFalse);
+    expect(repository.favoriteFolders('srv-1'), isEmpty);
+  });
+
+  test('favorite folders for one server never leak into another', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final repository = ServerRepository(
+      preferences,
+      const FlutterSecureStorage(),
+    );
+
+    await repository.toggleFavoriteFolder('srv-1', '~/project');
+    expect(repository.favoriteFolders('srv-2'), isEmpty);
+  });
+
+  test('recent folders are empty until one is remembered', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final repository = ServerRepository(
+      preferences,
+      const FlutterSecureStorage(),
+    );
+
+    expect(repository.recentFolders('srv-1'), isEmpty);
+  });
+
+  test('a re-opened recent folder moves back to the front, not duplicated', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final repository = ServerRepository(
+      preferences,
+      const FlutterSecureStorage(),
+    );
+
+    await repository.rememberRecentFolder('srv-1', '~/a');
+    await repository.rememberRecentFolder('srv-1', '~/b');
+    await repository.rememberRecentFolder('srv-1', '~/a');
+
+    expect(repository.recentFolders('srv-1'), ['~/a', '~/b']);
+  });
+
+  test('recent folders are capped so the list cannot grow forever', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final repository = ServerRepository(
+      preferences,
+      const FlutterSecureStorage(),
+    );
+
+    for (var i = 0; i < 12; i++) {
+      await repository.rememberRecentFolder('srv-1', '~/project-$i');
+    }
+
+    final recents = repository.recentFolders('srv-1');
+    expect(recents.length, ServerRepository.maxRecentFolders);
+    expect(recents.first, '~/project-11');
+  });
+
   test('biometric lock is off by default and persists once set', () async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();

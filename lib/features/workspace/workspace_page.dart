@@ -82,7 +82,7 @@ class _WorkspacePageState extends State<WorkspacePage>
           tab.directory,
           mode: ClaudeMode.values.firstWhere(
             (m) => m.name == tab.mode,
-            orElse: () => ClaudeMode.build,
+            orElse: () => ClaudeMode.bypass,
           ),
           continueConversation: true,
         );
@@ -161,7 +161,7 @@ class _WorkspacePageState extends State<WorkspacePage>
 
   void _openSession(
     String path, {
-    ClaudeMode mode = ClaudeMode.build,
+    ClaudeMode mode = ClaudeMode.bypass,
     bool continueConversation = false,
   }) {
     final session = TerminalSession(
@@ -179,6 +179,7 @@ class _WorkspacePageState extends State<WorkspacePage>
     });
     session.start(continueConversation: continueConversation);
     AppServices.of(context).launcherShortcuts.remember(widget.profile, path);
+    widget.repository.rememberRecentFolder(widget.profile.id, path);
     _persistTabs();
   }
 

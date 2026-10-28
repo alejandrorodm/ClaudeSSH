@@ -7,6 +7,7 @@ import 'package:xterm/xterm.dart';
 
 import '../../core/claude/claude_command.dart';
 import '../../core/notifications/agent_notifier.dart';
+import '../../core/remote/folder_label.dart';
 import '../../core/ssh/ssh_gateway.dart';
 import '../servers/server_profile.dart';
 import 'permission_prompt.dart';
@@ -31,7 +32,7 @@ class TerminalSession extends ChangeNotifier {
     required this.gateway,
     required this.loadCredentials,
     required this.directory,
-    this.mode = ClaudeMode.build,
+    this.mode = ClaudeMode.bypass,
   }) {
     terminal.onOutput = _sendBytes;
     terminal.onBell = _onBell;
@@ -74,11 +75,7 @@ class TerminalSession extends ChangeNotifier {
   SSHSession? _session;
 
   /// Tab title: the last folder of [directory].
-  String get title {
-    final trimmed = directory.replaceAll(RegExp(r'/+$'), '');
-    if (trimmed.isEmpty || trimmed == '~') return '~';
-    return trimmed.split('/').last;
-  }
+  String get title => folderLabel(directory);
 
   bool get isRunning => status == SessionStatus.running;
 

@@ -2,7 +2,8 @@
 enum ClaudeMode {
   plan('plan', 'Plan', 'Reads and proposes; never edits'),
   build('acceptEdits', 'Build', 'Edits files without asking'),
-  auto('auto', 'Auto', 'Claude Code decides when to ask');
+  auto('auto', 'Auto', 'Claude Code decides when to ask'),
+  bypass('bypassPermissions', 'Bypass', 'Skips every permission prompt');
 
   const ClaudeMode(this.flag, this.label, this.hint);
 
@@ -20,7 +21,7 @@ enum ClaudeMode {
 /// the chat history.
 String buildLaunchCommand({
   String? workingDirectory,
-  ClaudeMode mode = ClaudeMode.build,
+  ClaudeMode mode = ClaudeMode.bypass,
   bool continueConversation = false,
 }) {
   final cd = _changeDirectory(workingDirectory);

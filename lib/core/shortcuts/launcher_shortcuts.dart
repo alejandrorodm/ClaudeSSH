@@ -1,5 +1,6 @@
 import 'package:quick_actions/quick_actions.dart';
 
+import '../remote/folder_label.dart';
 import '../storage/server_repository.dart';
 import '../../features/servers/server_profile.dart';
 
@@ -49,17 +50,11 @@ class LauncherShortcuts {
         ShortcutItem(
           type: _resumeType,
           localizedTitle: 'Resume ${last.serverName}',
-          localizedSubtitle: _folderLabel(last.directory),
+          localizedSubtitle: folderLabel(last.directory),
         ),
       ]);
     } catch (_) {
       // A missing shortcut is a minor convenience loss, not worth surfacing.
     }
-  }
-
-  String _folderLabel(String directory) {
-    final trimmed = directory.replaceAll(RegExp(r'/+$'), '');
-    if (trimmed.isEmpty || trimmed == '~') return '~';
-    return trimmed.split('/').last;
   }
 }

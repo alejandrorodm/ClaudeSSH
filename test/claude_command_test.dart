@@ -11,13 +11,26 @@ void main() {
     });
 
     test('maps Build to acceptEdits', () {
-      final command = buildLaunchCommand();
+      final command = buildLaunchCommand(mode: ClaudeMode.build);
       expect(command, endsWith('--permission-mode acceptEdits'));
+    });
+
+    test('maps Bypass to bypassPermissions', () {
+      final command = buildLaunchCommand(mode: ClaudeMode.bypass);
+      expect(command, endsWith('--permission-mode bypassPermissions'));
+    });
+
+    test('defaults to Bypass when no mode is given', () {
+      final command = buildLaunchCommand();
+      expect(command, endsWith('--permission-mode bypassPermissions'));
     });
 
     test('resumes the conversation when asked', () {
       final command = buildLaunchCommand(continueConversation: true);
-      expect(command, endsWith('--permission-mode acceptEdits --continue'));
+      expect(
+        command,
+        endsWith('--permission-mode bypassPermissions --continue'),
+      );
     });
 
     test('changes to the working directory before exec', () {
