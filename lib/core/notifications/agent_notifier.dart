@@ -1,3 +1,6 @@
+import 'dart:typed_data' show Int64List;
+import 'dart:ui' show Color;
+
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 /// What happened to a Claude session that the user should hear about.
@@ -30,6 +33,12 @@ class AgentNotifier {
 
   static const _channelId = 'agents';
   static const _channelName = 'Claude agents';
+  static const _urgentChannelId = 'agents_urgent';
+  static const _urgentChannelName = 'Claude needs you';
+
+  /// Brand accent (matches the app's seed color), so notifications stand
+  /// out from the system's flat gray default instead of blending in.
+  static const _accentColor = Color(0xFFD97757);
 
   /// [onTap] fires with whatever [show] was given as [payload] when the
   /// user taps the notification, so the app can jump straight to that
@@ -52,8 +61,20 @@ class AgentNotifier {
       const AndroidNotificationChannel(
         _channelId,
         _channelName,
-        description: 'Sessions that finish or need your input',
+        description: 'Sessions that finish or run into an error',
         importance: Importance.high,
+      ),
+    );
+    await android?.createNotificationChannel(
+      AndroidNotificationChannel(
+        _urgentChannelId,
+        _urgentChannelName,
+        description: 'Claude is waiting on your input',
+        // A channel's importance and vibration are locked in once created
+        // (Android 8+), hence its own channel: this is the one case worth
+        // interrupting the user for, so it gets the loudest treatment.
+        importance: Importance.max,
+        vibrationPattern: Int64List.fromList([0, 250, 150, 250, 150, 400]),
       ),
     );
     await android?.requestNotificationsPermission();
@@ -66,6 +87,7 @@ class AgentNotifier {
     required String body,
     String? payload,
   }) {
+    final urgent = event == AgentEvent.needsYou;
     // Notifications are best effort: a failure here must never reach the UI.
     return _plugin
         .show(
@@ -74,11 +96,17 @@ class AgentNotifier {
           body: body,
           notificationDetails: NotificationDetails(
             android: AndroidNotificationDetails(
-              _channelId,
-              _channelName,
+              urgent ? _urgentChannelId : _channelId,
+              urgent ? _urgentChannelName : _channelName,
               icon: _iconFor(event),
-              importance: Importance.high,
-              priority: Priority.high,
+              largeIcon: const DrawableResourceAndroidBitmap(
+                'ic_notification_large',
+              ),
+              importance: urgent ? Importance.max : Importance.high,
+              priority: urgent ? Priority.max : Priority.high,
+              color: _accentColor,
+              colorized: true,
+              category: urgent ? AndroidNotificationCategory.reminder : null,
             ),
           ),
           payload: payload,
