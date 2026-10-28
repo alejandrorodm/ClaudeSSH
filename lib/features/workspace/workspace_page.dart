@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -50,6 +52,8 @@ class _WorkspacePageState extends State<WorkspacePage>
   late List<String> _quickCommands = widget.repository.quickCommands();
   bool? _wakelockOn;
   late ForegroundServiceController _foregroundService;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  bool _online = true;
 
   TerminalSession? get _current =>
       _sessions.isEmpty ? null : _sessions[_active];
@@ -68,6 +72,22 @@ class _WorkspacePageState extends State<WorkspacePage>
     } else {
       _restoreTabs();
     }
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
+      _onConnectivityChanged,
+    );
+  }
+
+  /// Retries every dropped session the moment connectivity comes back,
+  /// instead of waiting for its queued reconnect delay (or for the user to
+  /// notice and tap "Resume" once every queued attempt already gave up).
+  void _onConnectivityChanged(List<ConnectivityResult> results) {
+    final online = results.any((r) => r != ConnectivityResult.none);
+    if (online && !_online) {
+      for (final session in _sessions) {
+        session.retryNow();
+      }
+    }
+    _online = online;
   }
 
   /// Reopens whatever tabs were still open last time this server's workspace
@@ -114,6 +134,7 @@ class _WorkspacePageState extends State<WorkspacePage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _connectivitySubscription?.cancel();
     for (final session in _sessions) {
       session.dispose();
     }

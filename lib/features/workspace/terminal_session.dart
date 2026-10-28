@@ -159,6 +159,19 @@ class TerminalSession extends ChangeNotifier {
     reconnectAttempt = 0;
   }
 
+  /// Retries right away instead of waiting for a queued delay, because
+  /// connectivity was just restored — including after every queued attempt
+  /// already gave up. No-op while running, or if the user stopped it.
+  void retryNow() {
+    if (isRunning || _stoppedByUser) return;
+    if (status != SessionStatus.exited && status != SessionStatus.failed) {
+      return;
+    }
+    _reconnectTimer?.cancel();
+    reconnectAttempt = 0;
+    start(continueConversation: true);
+  }
+
   /// Switches permission mode. Claude restarts and resumes the conversation.
   Future<void> setMode(ClaudeMode next) async {
     if (next == mode) return;
