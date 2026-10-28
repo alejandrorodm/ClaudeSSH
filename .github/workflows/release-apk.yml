@@ -5,8 +5,15 @@ name: Release APK
 # the signingConfigs comment in android/app/build.gradle.kts), so every
 # build uses the same key and a new release installs cleanly over an older
 # one instead of Android rejecting it as a signature mismatch.
+#
+# A version tag (v*.*.*) publishes a proper numbered release. Every other
+# push to main instead updates a single rolling "latest-build" pre-release,
+# so the normal GitHub "latest release" (what the README's download badge
+# and /releases/latest point to) stays on the last real version tag.
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*.*.*"
   workflow_dispatch:
@@ -35,7 +42,18 @@ jobs:
 
       - run: ./tool/build_release.sh
 
-      - uses: softprops/action-gh-release@v2
+      - name: Publish versioned release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
         with:
           files: build/app/outputs/flutter-apk/claude-ssh-release.apk
           generate_release_notes: true
+
+      - name: Publish rolling dev build
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-build
+          name: "Latest build (${{ github.sha }})"
+          prerelease: true
+          files: build/app/outputs/flutter-apk/claude-ssh-release.apk
