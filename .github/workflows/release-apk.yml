@@ -40,7 +40,15 @@ jobs:
 
       - run: flutter pub get
 
-      - run: ./tool/build_release.sh
+      - name: Build
+        env:
+          # Only set from a version tag, so the APK's version always matches
+          # what it was released as; a plain push to main keeps whatever
+          # version is checked into pubspec.yaml.
+          BUILD_NAME: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+          BUILD_NUMBER: ${{ startsWith(github.ref, 'refs/tags/v') && github.run_number || '' }}
+        run: |
+          BUILD_NAME="${BUILD_NAME#v}" ./tool/build_release.sh
 
       - name: Publish versioned release
         if: startsWith(github.ref, 'refs/tags/')

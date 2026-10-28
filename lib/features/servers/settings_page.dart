@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/storage/server_repository.dart';
 
@@ -17,12 +18,18 @@ class _SettingsPageState extends State<SettingsPage> {
   late bool _enabled = widget.repository.biometricLockEnabled();
   bool? _supported;
   bool _busy = false;
+  String? _version;
 
   @override
   void initState() {
     super.initState();
     _auth.isDeviceSupported().then((supported) {
       if (mounted) setState(() => _supported = supported);
+    });
+    PackageInfo.fromPlatform().then((info) {
+      if (mounted) {
+        setState(() => _version = '${info.version} (${info.buildNumber})');
+      }
     });
   }
 
@@ -74,6 +81,11 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             value: _enabled,
             onChanged: (supported == false || _busy) ? null : _toggle,
+          ),
+          const Divider(),
+          ListTile(
+            title: const Text('Version'),
+            subtitle: Text(_version ?? '…'),
           ),
         ],
       ),
