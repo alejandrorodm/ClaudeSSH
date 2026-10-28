@@ -244,6 +244,25 @@ void main() {
     expect(recents.first, '~/project-11');
   });
 
+  test('quick commands default to the built-in set until changed', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final repository = ServerRepository(
+      preferences,
+      const FlutterSecureStorage(),
+    );
+
+    expect(repository.quickCommands(), [
+      '/clear',
+      '/compact',
+      '/usage',
+      '/model',
+    ]);
+
+    await repository.setQuickCommands(['/clear', '/my-command']);
+    expect(repository.quickCommands(), ['/clear', '/my-command']);
+  });
+
   test('biometric lock is off by default and persists once set', () async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();

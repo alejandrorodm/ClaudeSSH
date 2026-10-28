@@ -235,6 +235,18 @@ class ServerRepository {
 
   String _recentFoldersKey(String serverId) => 'workspace.recents.$serverId';
 
+  static const _defaultQuickCommands = ['/clear', '/compact', '/usage', '/model'];
+
+  /// Full Claude Code commands shown as one-tap chips, customizable because
+  /// different users lean on different slash commands.
+  List<String> quickCommands() =>
+      _preferences.getStringList(_quickCommandsKey) ?? _defaultQuickCommands;
+
+  Future<void> setQuickCommands(List<String> commands) =>
+      _preferences.setStringList(_quickCommandsKey, commands);
+
+  static const _quickCommandsKey = 'workspace.quickCommands';
+
   static const defaultTerminalFontSize = 13.0;
   static const minTerminalFontSize = 9.0;
   static const maxTerminalFontSize = 24.0;

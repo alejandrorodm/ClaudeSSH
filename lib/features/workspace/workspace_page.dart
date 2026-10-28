@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:xterm/xterm.dart';
 
@@ -44,6 +47,7 @@ class _WorkspacePageState extends State<WorkspacePage>
   int _active = 0;
   final _compose = TextEditingController();
   late double _fontSize = widget.repository.terminalFontSize();
+  late List<String> _quickCommands = widget.repository.quickCommands();
   bool? _wakelockOn;
   late ForegroundServiceController _foregroundService;
 
@@ -263,6 +267,17 @@ class _WorkspacePageState extends State<WorkspacePage>
 
   void _sendQuickCommand(String command) => _current?.sendMessage(command);
 
+  Future<void> _editQuickCommands() async {
+    final updated = await showModalBottomSheet<List<String>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => _QuickCommandsEditorSheet(commands: _quickCommands),
+    );
+    if (updated == null || !mounted) return;
+    setState(() => _quickCommands = updated);
+    widget.repository.setQuickCommands(updated);
+  }
+
   Future<void> _openSearch() async {
     final session = _current;
     if (session == null) return;
@@ -278,7 +293,7 @@ class _WorkspacePageState extends State<WorkspacePage>
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (context) => _SearchSheet(lines: lines),
+      builder: (context) => _SearchSheet(lines: lines, sessionTitle: session.title),
     );
   }
 
@@ -370,7 +385,11 @@ class _WorkspacePageState extends State<WorkspacePage>
                     options: current.promptOptions,
                     onAnswer: current.answerPrompt,
                   ),
-                _QuickCommandsBar(onCommand: _sendQuickCommand),
+                _QuickCommandsBar(
+                  commands: _quickCommands,
+                  onCommand: _sendQuickCommand,
+                  onEdit: _editQuickCommands,
+                ),
                 _KeyBar(onKey: (sequence) => current.sendKey(sequence)),
                 _Composer(
                   controller: _compose,
@@ -620,12 +639,17 @@ class _PromptReplyBar extends StatelessWidget {
 }
 
 /// Full Claude Code commands that are tedious to type on a phone keyboard.
+/// Customizable: [onEdit] opens the editor for [commands].
 class _QuickCommandsBar extends StatelessWidget {
-  const _QuickCommandsBar({required this.onCommand});
+  const _QuickCommandsBar({
+    required this.commands,
+    required this.onCommand,
+    required this.onEdit,
+  });
 
+  final List<String> commands;
   final ValueChanged<String> onCommand;
-
-  static const _commands = ['/clear', '/compact', '/usage', '/model'];
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -634,10 +658,17 @@ class _QuickCommandsBar extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        itemCount: _commands.length,
+        itemCount: commands.length + 1,
         separatorBuilder: (_, _) => const SizedBox(width: 6),
         itemBuilder: (context, index) {
-          final command = _commands[index];
+          if (index == commands.length) {
+            return ActionChip(
+              avatar: const Icon(Icons.edit_outlined, size: 16),
+              label: const Text('Edit'),
+              onPressed: onEdit,
+            );
+          }
+          final command = commands[index];
           return ActionChip(
             label: Text(command),
             onPressed: () => onCommand(command),
@@ -648,11 +679,106 @@ class _QuickCommandsBar extends StatelessWidget {
   }
 }
 
+/// Add, remove, or keep the quick commands shown in [_QuickCommandsBar].
+/// Pops with the final list once the user is done.
+class _QuickCommandsEditorSheet extends StatefulWidget {
+  const _QuickCommandsEditorSheet({required this.commands});
+
+  final List<String> commands;
+
+  @override
+  State<_QuickCommandsEditorSheet> createState() =>
+      _QuickCommandsEditorSheetState();
+}
+
+class _QuickCommandsEditorSheetState
+    extends State<_QuickCommandsEditorSheet> {
+  late final List<String> _commands = [...widget.commands];
+  final _input = TextEditingController();
+
+  @override
+  void dispose() {
+    _input.dispose();
+    super.dispose();
+  }
+
+  void _add() {
+    final text = _input.text.trim();
+    if (text.isEmpty || _commands.contains(text)) return;
+    setState(() {
+      _commands.add(text);
+      _input.clear();
+    });
+  }
+
+  void _remove(int index) => setState(() => _commands.removeAt(index));
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Quick commands',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            if (_commands.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text('No quick commands yet.'),
+              ),
+            for (var i = 0; i < _commands.length; i++)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text(_commands[i]),
+                trailing: IconButton(
+                  tooltip: 'Remove',
+                  icon: const Icon(Icons.close),
+                  onPressed: () => _remove(i),
+                ),
+              ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _input,
+                    decoration: const InputDecoration(
+                      hintText: '/my-command',
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    onSubmitted: (_) => _add(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(onPressed: _add, child: const Text('Add')),
+              ],
+            ),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(_commands),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Searches the terminal's plain text and lets the user copy a line.
 class _SearchSheet extends StatefulWidget {
-  const _SearchSheet({required this.lines});
+  const _SearchSheet({required this.lines, required this.sessionTitle});
 
   final List<String> lines;
+  final String sessionTitle;
 
   @override
   State<_SearchSheet> createState() => _SearchSheetState();
@@ -680,6 +806,20 @@ class _SearchSheetState extends State<_SearchSheet> {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Copied'), duration: Duration(seconds: 1)),
+    );
+  }
+
+  void _share() {
+    SharePlus.instance.share(
+      ShareParams(
+        files: [
+          XFile.fromData(
+            utf8.encode(widget.lines.join('\n')),
+            name: '${widget.sessionTitle}.log.txt',
+            mimeType: 'text/plain',
+          ),
+        ],
+      ),
     );
   }
 
@@ -711,6 +851,11 @@ class _SearchSheetState extends State<_SearchSheet> {
                     ),
                   ),
                   const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: 'Share log',
+                    icon: const Icon(Icons.ios_share_outlined),
+                    onPressed: _share,
+                  ),
                   TextButton.icon(
                     icon: const Icon(Icons.copy_all_outlined),
                     label: const Text('Copy all'),
